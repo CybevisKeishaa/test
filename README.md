@@ -1,134 +1,161 @@
-# Developer Assessment: Code Review & Bug Hunting
+# Developer Assessment: Full-Stack Engineering & Quality Assurance
 
 ## Overview
 
-This is a full-stack Todo application with JWT authentication.
+This assessment evaluates your engineering skills across the full development lifecycle:
+- Code review, bug identification, and debugging
+- Automated testing (Backend pytest & Frontend Playwright E2E) and manual test planning
+- Technical specification & requirement analysis
+- Clean Git workflow & Docker containerization
+- Database optimization & query tuning
 
-The codebase contains intentional issues across backend, frontend, database, caching, and infrastructure layers. The assessment is designed to evaluate practical debugging, code review judgment, and the ability to propose or implement safe fixes.
-
-## Required Task: Bug Hunting & Fixes
-
-Review the codebase and identify the most important issues you can find.
-
-_Note: You can report not only functional bugs, but also any architectural, performance, or design issues you find unreasonable. Reviewers will evaluate your assessment based on the issues you identify and your proposed improvements._
-
-For each reported issue, include:
-
-- **Location**: file path and relevant function/line.
-- **Reason**: why do you think it is an issue.
-- **Fix proposal**: concise explanation or code snippet.
-
-Then implement fixes for the issues you consider most important.
-You do not need to fix every issue you report. Fixing bugs related to convention is not too important.
-Prioritize correctness, security, data isolation, and regressions over cosmetic cleanup.
-
-Expected implementation scope:
-
-- Fix at least **5 meaningful issues**, including at least **2 backend issues** and **1 frontend issue**.
-- Add or update tests for the fixes where practical.
-- Keep changes focused and explain any important tradeoffs.
-
-## Areas To Investigate
-
-- Security and authentication: JWT validation, authorization, data isolation.
-- Backend API correctness: REST semantics, validation, business logic.
-- Database and performance: schema constraints, query efficiency, migrations.
-- Caching: cache key isolation and invalidation.
-- Frontend state management: React Query keys, optimistic updates, auth state, UX behavior.
-- Infrastructure: Docker setup, environment configuration, test reliability.
-
-## Deliverables
-
-> [!IMPORTANT]
-> **Submission Workflow:**
->
-> 1. **Fork** this repository.
-> 2. Work only in your fork. Do not create branches, issues, pull requests, or other visible artifacts in the original repository.
-> 3. Create a branch in your fork for your changes. Example: `bugfix/fix-auth-issues`, `assessment/bug-report`, etc.
-> 4. Push the changes to your fork.
-> 5. Create a **Pull Request (PR) inside your fork**, targeting the default branch of your fork. Do not open a PR against the original repository.
-> 6. Submit the link to your fork PR. If your Git hosting provider does not support PRs within a fork, submit the fork repository link and branch name instead.
-> 7. **Document all findings, explanations, and report details directly in the Pull Request description.** Reviewers will evaluate your work primarily based on the contents and clarity of this PR description.
-
-Your Pull Request must contain:
-
-- Your bug report (fully described in the PR description).
-- Source code changes, migrations if needed, and tests for implemented fixes.
-- Setup or verification notes, including commands you ran and any known limitations.
-
-AI-assisted tools are allowed.
-If you use them, disclose the type of assistance briefly in your report.
-
-You should commit all resources and configurations related to the coding agents you used (such as `Claude.md`, `.agents`, `.claude`, `.cursor`, etc.) and any custom instructions or documentation you defined for the AI.
-
-\(\*) Do not commit private credentials or editor-specific history files.
-
-## Setup
-
-Follow the instructions in [GUIDE.md](GUIDE.md) to run the application locally.
+**Estimated Duration**: 1–2 days.
 
 ---
 
-## Optional Extension: Todo Tags, Filtering & Bulk Actions
+## Assessment Structure
 
-If you finish the required task and want to demonstrate broader full-stack implementation ability, implement the feature below. This is optional unless your interviewer explicitly asks for it.
+The evaluation is organized into progressive tiers:
 
-### Database Schema
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Tier 1: Bug Hunting & Critical Fixes        (Mandatory)    │
+├─────────────────────────────────────────────────────────────┤
+│  Tier 2: Testing Strategy & Implementation   (Mandatory)    │
+├─────────────────────────────────────────────────────────────┤
+│  Tier 3: Advanced Engineering Skills         (Mandatory)    │
+│    Task 3A: Technical Spec Writing (Todo Sharing)           │
+│    Task 3B: Docker & Infrastructure Optimization            │
+│    Task 3C: Database Indexing & Query Tuning                │
+├─────────────────────────────────────────────────────────────┤
+│  Tier 4: Optional Extension (Todo Tags & Bulk Actions)      │
+└─────────────────────────────────────────────────────────────┘
+```
 
-Create the following tables and relationships:
+---
 
-- **`tags`**
-  - `id`: UUID primary key
-  - `user_id`: UUID foreign key referencing `users(id)`, not null
-  - `name`: VARCHAR(50), not null
-  - `color`: VARCHAR(20), nullable
-  - `created_at`: TIMESTAMPTZ, not null
-  - `updated_at`: TIMESTAMPTZ, not null
-- **`todo_tags`**
-  - `todo_id`: UUID foreign key referencing `todos(id)`, not null
-  - `tag_id`: UUID foreign key referencing `tags(id)`, not null
-  - Primary key: `(todo_id, tag_id)`
+## Tier 1: Bug Hunting & Fixes (Required - 30 pts)
 
-Constraints and indexes:
+The codebase has intentional issues across authentication, business logic, caching, and state management.
 
-- Case-insensitive unique tag names per user.
-- Indexes on `tags(user_id)`, `todo_tags(tag_id)`, `todo_tags(todo_id)`, and `todos(user_id, completed, created_at)`.
+### Scope:
+1. **Identify and report** the most impactful issues in your Pull Request description using this structure:
+   - **Location**: file path and line number/function
+   - **Severity**: Critical / High / Medium / Low
+   - **Reason**: Why it is a problem (security flaw, data leak, regression)
+   - **Fix Proposal**: Concise explanation or patch
+2. **Implement fixes** for at least **5 meaningful issues** (including at least **2 backend** and **1 frontend**).
+3. Focus on correctness, authorization, and data isolation rather than minor styling tweaks.
 
-### API Endpoints
+---
 
-- `GET /tags`: list all tags of the authenticated user.
-- `POST /tags`: create a new tag.
-- `PATCH /tags/{tag_id}`: rename/update a tag.
-- `DELETE /tags/{tag_id}`: delete a tag and its todo-tag relations.
-- `GET /todos?status=&tag_id=&keyword=&date_from=&date_to=&page=&page_size=`: list todos with filtering and pagination.
-- `POST /todos/{todo_id}/tags`: attach a tag to a todo.
-- `DELETE /todos/{todo_id}/tags/{tag_id}`: detach a tag from a todo.
-- `PATCH /todos/bulk-status`: bulk update status.
-  - Payload: `{ "todo_ids": ["uuid-1", "uuid-2"], "completed": true }`
+## Tier 2: Testing Strategy & Implementation (Required - 25 pts)
 
-### Backend Rules
+A quality engineer writes tests that verify critical business paths and guard against regressions.
 
-- Users must only interact with their own tags and todos.
-- Users can only attach their own tags to their own todos.
-- Tag names must be unique per user, case-insensitively.
-- Bulk updates must run in a database transaction.
-- Todo pagination must order by `created_at DESC, id DESC`.
-- Redis cache for todo lists must scope by user and query/filter parameters.
-- Cache must be invalidated on create, update, delete, tag mapping, and bulk updates.
+### 2A. Backend Automated Tests (pytest)
+Write tests in `backend/tests/` verifying at least **3 critical scenarios** from:
+- Expired or tampered JWT access token rejection.
+- Authorization boundary: User A cannot read, update, or delete User B's todos.
+- Boolean toggle: Updating `completed` from `true` back to `false` persists correctly.
+- Incomplete partial update: Updating title does not erase description.
+- Cache invalidation: Creating, updating, or deleting a todo removes stale Redis cache.
 
-### Frontend Requirements
+Run backend tests:
+```bash
+cd backend
+pytest tests/ -v
+```
 
-- Todo list filter bar with keyword, status, tag, date range, and clear filters.
-- Todo item UI displaying attached tags.
-- Tag management UI for list/create/rename/delete.
-- Bulk actions for selecting multiple todos and marking them completed or active.
-- Use `@tanstack/react-query` for data fetching and mutations.
-- Query keys must include all filter parameters.
-- Invalidate query cache correctly after mutations.
-- Use `react-hook-form` and `zod` for validation matching the backend.
-- Clear user-scoped cached data on logout.
+### 2B. Playwright End-to-End (E2E) Tests
+Setup Playwright from scratch in the repository (e.g., in an `e2e/` folder or within `frontend/`) and implement at least **2 automated browser test scenarios**:
+1. **Full User Journey**: Register/Login → Create a todo → Toggle completion → Verify item in UI → Logout.
+2. **Cross-User Data Isolation**: User A creates a private todo; User B logs in on another session and confirms the item is NOT visible.
 
-### Suggested Tests
+Provide clear commands in your PR to run the E2E suite headless or headed:
+```bash
+npx playwright test
+```
 
-- Backend: create tag success, duplicate tag casing, cross-user access prevention, attaching another user's tag prevention, filtering by tag, bulk update ownership check, cache invalidation.
-- Frontend: tag form validation, todo filter query key behavior, bulk action success/error handling, logout clearing cached data.
+### 2C. Manual Test Plan
+Submit a structured markdown document (refer to [`templates/TEST_PLAN_TEMPLATE.md`](templates/TEST_PLAN_TEMPLATE.md) or embed in your PR):
+- Test scenarios covering Authentication & Authorization.
+- Preconditions, test steps, expected vs actual results.
+- Severity and priority classifications.
+
+---
+
+## Tier 3: Advanced Engineering Skills (Required - 30 pts)
+
+Candidates must complete **all three tasks** below (10 pts each):
+
+---
+
+### Task 3A: Technical Specification Writing (Todo Sharing) (10 pts)
+Assume product stakeholders provided the following high-level feature request:
+> *"Users should be able to share their todo list with other users with either read-only (viewer) or edit (editor) permissions, and owners can revoke access anytime."*
+
+Your task is **not** to implement the code, but to produce a production-grade specification document `docs/TODO_SHARING_SPEC.md` (use [`templates/SPEC_TEMPLATE.md`](templates/SPEC_TEMPLATE.md) as a guide):
+- **User stories & Acceptance criteria**: Detailed scenarios.
+- **Data model**: Proposed tables, fields, types, foreign keys, unique constraints, and cascade delete behavior.
+- **API design**: Endpoints, request schemas, status codes, and error payloads.
+- **Authorization & Edge cases**: Self-sharing prevention, duplicate invites, concurrent updates, immediate cache invalidation upon revoking permission.
+- **Out of Scope**: Explicit boundaries to keep the release lean.
+
+---
+
+### Task 3B: Docker & Infrastructure Optimization (10 pts)
+Inspect the current container setup (`docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile`).
+
+Implement improvements addressing at least **3 of the following**:
+- Add dependable **healthchecks** for PostgreSQL and Redis; configure backend `depends_on` with `condition: service_healthy` so it won't crash on cold boot.
+- Create `.dockerignore` files for both backend and frontend to exclude `node_modules`, `venv`, `test.db`, and build caches.
+- Optimize image sizes using multi-stage builds or slim base images.
+- Provide a clean `docker-compose.prod.yml` or production-ready configuration separating dev reload from production execution.
+- Security enhancement: Ensure Redis is secured and secrets are not leaked in image layers.
+
+---
+
+### Task 3C: Database Performance & Indexing Strategy (10 pts)
+The project includes a seed script capable of creating large datasets:
+```bash
+docker compose exec -e SEED_USERS=10000 -e SEED_TODOS=1000000 backend python -m app.db.seed
+```
+
+Analyze database performance:
+1. Run `EXPLAIN ANALYZE` on core queries (user-filtered todo queries, ordering by `created_at`, counting todos) before adding indexes.
+2. Formulate and apply optimal indexes via an Alembic migration (e.g., composite index on `(user_id, completed, created_at)`).
+3. Document a benchmark table in your PR showing query execution time **Before vs After** optimization.
+4. Explain index tradeoffs: write latency impact, index storage overhead, and migration safety on large production tables.
+
+---
+
+## Tier 4: Optional Extension (Todo Tags & Filtering) (Bonus +15 pts)
+
+If you have completed all mandatory tiers early and want to demonstrate broad full-stack capabilities, review the full specification in [`docs/NEW.md`](docs/NEW.md) and implement **Todo Tags, Multi-Filter Bar, and Bulk Actions**.
+
+---
+
+## Git Workflow & Submission Guidelines (15 pts)
+
+A clean Git history reflects professional engineering discipline:
+- **Repository Setup**: Fork this repo, work inside your fork on a branch named `assessment/<your-name>` or `feature/<topic>`.
+- **Atomic Commits**: Group related changes logically. Do not lump all fixes into a single generic commit.
+- **Conventional Commits**: Format commit messages conforming to [Conventional Commits](https://www.conventionalcommits.org/):
+  ```
+  fix(auth): enforce token expiration in verify_token
+  feat(todos): check user ownership before updating todo
+  test(e2e): add playwright cross-user isolation test
+  docs(spec): add todo sharing technical specification
+  ```
+  *(A `.commitlintrc.json` configuration is pre-configured in this repository).*
+- **Pull Request Submission**:
+  - Open a PR in your fork targeting your default branch.
+  - Detail all findings, test results, reproduction commands, and trade-offs directly in the PR description.
+  - If AI coding assistants were used, disclose them and include any prompt logs or configurations.
+
+---
+
+## Local Setup & Quick Start
+
+Follow the instructions in [GUIDE.md](GUIDE.md) to launch services with Docker or local virtual environments.

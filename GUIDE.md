@@ -142,8 +142,26 @@ fabbi/
 
 ## Running Tests
 
+### Backend Automated Tests
 ```bash
-# Backend tests
 cd backend
 pytest tests/ -v
 ```
+
+### Frontend E2E Tests (Playwright)
+Once set up, run your Playwright suite against the running frontend:
+```bash
+# In your E2E / frontend directory:
+npx playwright test
+```
+
+### Database Performance Benchmarking
+To test database indexing and query execution times with 1 million records:
+```bash
+docker compose exec -e SEED_USERS=10000 -e SEED_TODOS=1000000 backend python -m app.db.seed
+```
+Connect to PostgreSQL container to run `EXPLAIN ANALYZE`:
+```bash
+docker compose exec postgres psql -U fabbi -d postgres
+```
+
