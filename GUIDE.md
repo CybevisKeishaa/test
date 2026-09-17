@@ -182,6 +182,7 @@ Tag names are unique per user, ignoring case.
 | [`docs/MANUAL_TEST_PLAN.md`](docs/MANUAL_TEST_PLAN.md) | Manual test plan and execution results |
 | [`docs/DB_PERFORMANCE.md`](docs/DB_PERFORMANCE.md) | Index analysis, `EXPLAIN ANALYZE` output, benchmarks |
 | [`docs/AI_USAGE.md`](docs/AI_USAGE.md) | Disclosure of AI assistance |
+| [`docs/PR_DESCRIPTION.md`](docs/PR_DESCRIPTION.md) | Full findings, results and trade-offs (the pull-request body) |
 
 ## Project Structure
 
