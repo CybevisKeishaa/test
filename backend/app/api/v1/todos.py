@@ -22,6 +22,11 @@ router = APIRouter()
 
 CACHE_TTL = 300  # 5 minutes
 
+TODO_NOT_FOUND = HTTPException(
+    status_code=status.HTTP_404_NOT_FOUND,
+    detail="Todo not found",
+)
+
 
 @router.get("", response_model=TodoListResponse)
 async def list_todos(
@@ -92,12 +97,11 @@ async def get_todo(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a specific todo by ID."""
-    todo = await get_todo_by_id(db, todo_id)
+    todo = await get_todo_by_id(db, todo_id, current_user.id)
     if not todo:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Todo not found",
-        )
+        # 404 rather than 403: telling a stranger "this exists but is not
+        # yours" leaks which todo ids are real.
+        raise TODO_NOT_FOUND
 
     return todo
 
@@ -111,25 +115,18 @@ async def update_existing_todo(
     redis: RedisClient = Depends(get_redis),
 ):
     """Update a todo item."""
-    todo = await get_todo_by_id(db, todo_id)
+    todo = await get_todo_by_id(db, todo_id, current_user.id)
     if not todo:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Todo not found",
-        )
+        # 404 rather than 403: telling a stranger "this exists but is not
+        # yours" leaks which todo ids are real.
+        raise TODO_NOT_FOUND
 
-    update_data = todo_data.model_dump()
+    # exclude_unset keeps a partial update partial: a request that only carries
+    # a title must not blank out the description. Fields that ARE sent are
+    # applied as-is, so completed=false is persisted like any other value.
+    update_data = todo_data.model_dump(exclude_unset=True)
 
-    if todo_data.completed:
-        todo.completed = todo_data.completed
-
-    # Apply other updates
-    if update_data.get("title") is not None:
-        todo.title = update_data["title"]
-    if "description" in update_data:
-        todo.description = update_data["description"]
-
-    updated_todo = await update_todo(db, todo, {})
+    updated_todo = await update_todo(db, todo, update_data)
 
     return updated_todo
 
@@ -142,12 +139,11 @@ async def delete_existing_todo(
     redis: RedisClient = Depends(get_redis),
 ):
     """Delete a todo item."""
-    todo = await get_todo_by_id(db, todo_id)
+    todo = await get_todo_by_id(db, todo_id, current_user.id)
     if not todo:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Todo not found",
-        )
+        # 404 rather than 403: telling a stranger "this exists but is not
+        # yours" leaks which todo ids are real.
+        raise TODO_NOT_FOUND
 
     await delete_todo(db, todo)
 

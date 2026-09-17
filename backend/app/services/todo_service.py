@@ -32,15 +32,23 @@ async def get_todos(
     result = await db.execute(query)
     todos = list(result.scalars().all())
 
-    # Count total
     count_query = select(func.count()).select_from(Todo).where(Todo.user_id == user_id)
     total = await db.execute(count_query)
 
     return todos, total.scalar_one()
 
 
-async def get_todo_by_id(db: AsyncSession, todo_id: uuid.UUID) -> Todo | None:
-    result = await db.execute(select(Todo).where(Todo.id == todo_id))
+async def get_todo_by_id(
+    db: AsyncSession, todo_id: uuid.UUID, user_id: uuid.UUID
+) -> Todo | None:
+    """Fetch a todo, scoped to its owner.
+
+    ``user_id`` is part of the WHERE clause rather than a check on the loaded
+    row, so there is no code path that can read another user's todo at all.
+    """
+    result = await db.execute(
+        select(Todo).where(Todo.id == todo_id, Todo.user_id == user_id)
+    )
     return result.scalar_one_or_none()
 
 
