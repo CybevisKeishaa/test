@@ -16,7 +16,7 @@ class RedisClient:
 
     async def close(self):
         if self._redis:
-            await self._redis.close()
+            await self._redis.aclose()
 
     @property
     def client(self):
@@ -32,7 +32,7 @@ class RedisClient:
         await self._redis.delete(key)
 
     async def exists(self, key: str) -> bool:
-        return await self._redis.exists(key)
+        return bool(await self._redis.exists(key))
 
 
 redis_client = RedisClient()
