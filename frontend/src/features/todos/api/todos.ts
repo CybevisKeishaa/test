@@ -1,6 +1,6 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, type QueryKey } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { ACCESS_TOKEN_KEY, api } from "@/lib/api";
 import { queryClient } from "@/lib/queryClient";
 
 export interface Todo {
@@ -13,7 +13,7 @@ export interface Todo {
   updated_at: string;
 }
 
-interface TodoListResponse {
+export interface TodoListResponse {
   items: Todo[];
   total: number;
   page: number;
@@ -31,16 +31,38 @@ interface UpdateTodoRequest {
   completed?: boolean;
 }
 
+export const DEFAULT_PAGE_SIZE = 20;
 
-export function useTodos(page: number = 1, size: number = 10000) {
+/**
+ * Query keys for the todo list.
+ *
+ * `list` includes every parameter that changes the response. A bare ["todos"]
+ * key made page 2 overwrite the cached page 1 and then read it back, so
+ * paging appeared to do nothing.
+ */
+export const todoKeys = {
+  all: ["todos"] as const,
+  list: (page: number, size: number) => ["todos", { page, size }] as const,
+};
+
+function invalidateTodoLists() {
+  // Prefix match: every cached page is refetched, not just the current one.
+  return queryClient.invalidateQueries({ queryKey: todoKeys.all });
+}
+
+export function useTodos(page: number = 1, size: number = DEFAULT_PAGE_SIZE) {
   return useQuery({
-    queryKey: ["todos"],
+    queryKey: todoKeys.list(page, size),
     queryFn: async (): Promise<TodoListResponse> => {
       const response = await api.get("/todos", {
         params: { page, size },
       });
       return response.data;
     },
+    // Logging out clears the cache, which would otherwise make every mounted
+    // list refetch without a token on its way out.
+    enabled: !!localStorage.getItem(ACCESS_TOKEN_KEY),
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -51,7 +73,7 @@ export function useCreateTodo() {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["todos"] });
+      invalidateTodoLists();
       toast.success("Todo created successfully!");
     },
     onError: () => {
@@ -60,6 +82,7 @@ export function useCreateTodo() {
   });
 }
 
+type TodoListSnapshot = [QueryKey, TodoListResponse | undefined][];
 
 export function useUpdateTodo() {
   return useMutation({
@@ -74,29 +97,37 @@ export function useUpdateTodo() {
       return response.data;
     },
     onMutate: async ({ id, data }) => {
-      // Cancel outgoing queries
-      await queryClient.cancelQueries({ queryKey: ["todos"] });
+      await queryClient.cancelQueries({ queryKey: todoKeys.all });
 
-      // Snapshot previous value
-      const previousTodos = queryClient.getQueryData<TodoListResponse>(["todos"]);
+      // Snapshot every cached page, not just one, since the mutation does not
+      // know which page the item is currently displayed on.
+      const previous = queryClient.getQueriesData<TodoListResponse>({
+        queryKey: todoKeys.all,
+      }) as TodoListSnapshot;
 
-      // Optimistically update
-      if (previousTodos) {
-        queryClient.setQueryData<TodoListResponse>(["todos"], {
-          ...previousTodos,
-          items: previousTodos.items.map((todo) =>
+      previous.forEach(([key, value]) => {
+        if (!value) return;
+        queryClient.setQueryData<TodoListResponse>(key, {
+          ...value,
+          items: value.items.map((todo) =>
             todo.id === id ? { ...todo, ...data } : todo
           ),
         });
-      }
+      });
 
-      return { previousTodos };
+      return { previous };
     },
-    onError: () => {
+    onError: (_error, _variables, context) => {
+      // Roll the optimistic write back. Previously onMutate returned a
+      // snapshot that nothing ever restored, so a failed update left the UI
+      // showing a change the server had rejected.
+      context?.previous.forEach(([key, value]) => {
+        queryClient.setQueryData(key, value);
+      });
       toast.error("Failed to update todo");
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["todos"] });
+      invalidateTodoLists();
     },
   });
 }
@@ -107,7 +138,7 @@ export function useDeleteTodo() {
       await api.delete(`/todos/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["todos"] });
+      invalidateTodoLists();
       toast.success("Todo deleted successfully!");
     },
     onError: () => {
@@ -120,12 +151,11 @@ export function useToggleTodo() {
   const updateTodo = useUpdateTodo();
 
   return {
-    ...updateTodo,
-    mutate: (todo: Todo) => {
+    isPending: updateTodo.isPending,
+    toggle: (todo: Todo) =>
       updateTodo.mutate({
         id: todo.id,
         data: { completed: !todo.completed },
-      });
-    },
+      }),
   };
 }
