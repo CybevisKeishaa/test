@@ -14,7 +14,7 @@ export function TodoList({ todos }: TodoListProps) {
   const toggleTodo = useToggleTodo();
 
   const handleToggle = (todo: Todo) => {
-    toggleTodo.mutate(todo);
+    toggleTodo.toggle(todo);
   };
 
   const handleEdit = (todo: Todo) => {
@@ -37,11 +37,13 @@ export function TodoList({ todos }: TodoListProps) {
   return (
     <>
       <div className="space-y-2">
-        {todos.map((todo, index) => (
+        {todos.map((todo) => (
+          // Keyed by id, not array index: with an index key React reuses the
+          // DOM node of a deleted row for its replacement, so the checkbox
+          // state of the row above slides onto the wrong todo.
           <TodoItem
-            key={index}
+            key={todo.id}
             todo={todo}
-            index={index}
             onToggle={handleToggle}
             onEdit={handleEdit}
             onDelete={handleDelete}
