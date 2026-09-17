@@ -1,15 +1,34 @@
 import json
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_redis
 from app.core.redis import RedisClient
+from app.core.todo_cache import (
+    CACHE_TTL,
+    invalidate_todo_list_cache,
+    todo_list_cache_key,
+)
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.todo import TodoCreate, TodoListResponse, TodoResponse, TodoUpdate
+from app.schemas.tag import TodoTagAttach
+from app.schemas.todo import (
+    TodoBulkStatusResponse,
+    TodoBulkStatusUpdate,
+    TodoCreate,
+    TodoListResponse,
+    TodoResponse,
+    TodoStatusFilter,
+    TodoUpdate,
+)
+from app.services.tag_service import attach_tag, detach_tag, get_tag_by_id
 from app.services.todo_service import (
+    TodoFilters,
+    TodosNotFound,
+    bulk_set_completed,
     create_todo,
     delete_todo,
     get_todo_by_id,
@@ -19,66 +38,71 @@ from app.services.todo_service import (
 
 router = APIRouter()
 
-CACHE_TTL = 300  # 5 minutes
 MAX_PAGE_SIZE = 100
 
 TODO_NOT_FOUND = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
     detail="Todo not found",
 )
+TAG_NOT_FOUND = HTTPException(
+    status_code=status.HTTP_404_NOT_FOUND,
+    detail="Tag not found",
+)
 
 
-def todo_list_cache_key(user_id: uuid.UUID, page: int, size: int) -> str:
-    """Cache key for one page of one user's todo list.
-
-    The owner and the pagination window are both part of the key: a single
-    shared key would serve one user's todos to every other user, and would also
-    serve page 1 for every page request.
-    """
-    return f"todos:list:{user_id}:page={page}:size={size}"
-
-
-async def invalidate_todo_list_cache(redis: RedisClient, user_id: uuid.UUID) -> None:
-    """Drop every cached page for this user after a write."""
-    await redis.delete_pattern(f"todos:list:{user_id}:*")
+def _with_owner_email(todo, email: str) -> TodoResponse:
+    return TodoResponse.model_validate(todo).model_copy(update={"user_email": email})
 
 
 @router.get("", response_model=TodoListResponse)
 async def list_todos(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=MAX_PAGE_SIZE),
+    page_size: int | None = Query(
+        None, ge=1, le=MAX_PAGE_SIZE, description="Alias for `size`; takes precedence."
+    ),
+    status_filter: TodoStatusFilter = Query(TodoStatusFilter.all, alias="status"),
+    tag_id: uuid.UUID | None = Query(None),
+    keyword: str | None = Query(None, max_length=200),
+    date_from: date | None = Query(None, description="Inclusive, UTC day"),
+    date_to: date | None = Query(None, description="Inclusive, UTC day"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     redis: RedisClient = Depends(get_redis),
 ):
-    """Get paginated list of todos."""
-    skip = (page - 1) * size
+    """Get a filtered, paginated list of todos."""
+    effective_size = page_size if page_size is not None else size
+    skip = (page - 1) * effective_size
 
-    cache_key = todo_list_cache_key(current_user.id, page, size)
+    filters = TodoFilters(
+        status=status_filter,
+        tag_id=tag_id,
+        keyword=keyword,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+    cache_key = todo_list_cache_key(current_user.id, page, effective_size, filters)
 
     cached = await redis.get(cache_key)
     if cached:
         return TodoListResponse(**json.loads(cached))
 
-    todos, total = await get_todos(db, user_id=current_user.id, skip=skip, limit=size)
+    todos, total = await get_todos(
+        db,
+        user_id=current_user.id,
+        skip=skip,
+        limit=effective_size,
+        filters=filters,
+    )
 
     # Every row is filtered on user_id == current_user.id, so the owner's email
     # is already in hand -- the previous per-row User query was a pure N+1.
-    items = [
-        TodoResponse(
-            id=todo.id,
-            title=todo.title,
-            description=todo.description,
-            completed=todo.completed,
-            user_id=todo.user_id,
-            created_at=todo.created_at,
-            updated_at=todo.updated_at,
-            user_email=current_user.email,
-        )
-        for todo in todos
-    ]
+    items = [_with_owner_email(todo, current_user.email) for todo in todos]
 
-    response = TodoListResponse(items=items, total=total, page=page, size=size)
+    response = TodoListResponse(
+        items=items, total=total, page=page, size=effective_size
+    )
 
     await redis.set(cache_key, response.model_dump_json(), ex=CACHE_TTL)
 
@@ -96,6 +120,31 @@ async def create_new_todo(
     todo = await create_todo(db, todo_data, current_user.id)
     await invalidate_todo_list_cache(redis, current_user.id)
     return todo
+
+
+@router.patch("/bulk-status", response_model=TodoBulkStatusResponse)
+async def bulk_update_status(
+    payload: TodoBulkStatusUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    redis: RedisClient = Depends(get_redis),
+):
+    """Mark several todos completed or active in one transaction.
+
+    Declared before `/{todo_id}` so "bulk-status" is never read as an id.
+    """
+    try:
+        updated = await bulk_set_completed(
+            db, current_user.id, payload.todo_ids, payload.completed
+        )
+    except TodosNotFound:
+        # All or nothing: if any id is not the caller's, nothing is written.
+        # 404 rather than 403, so the response does not confirm which ids exist.
+        raise TODO_NOT_FOUND
+
+    await invalidate_todo_list_cache(redis, current_user.id)
+
+    return TodoBulkStatusResponse(updated=updated, completed=payload.completed)
 
 
 @router.get("/{todo_id}", response_model=TodoResponse)
@@ -151,6 +200,56 @@ async def delete_existing_todo(
         raise TODO_NOT_FOUND
 
     await delete_todo(db, todo)
+    await invalidate_todo_list_cache(redis, current_user.id)
+
+    return None
+
+
+@router.post("/{todo_id}/tags", response_model=TodoResponse)
+async def attach_tag_to_todo(
+    todo_id: uuid.UUID,
+    payload: TodoTagAttach,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    redis: RedisClient = Depends(get_redis),
+):
+    """Attach one of the caller's tags to one of the caller's todos.
+
+    Both lookups are owner-scoped, so a user can neither tag someone else's
+    todo nor put someone else's tag on their own.
+    """
+    todo = await get_todo_by_id(db, todo_id, current_user.id)
+    if not todo:
+        raise TODO_NOT_FOUND
+
+    tag = await get_tag_by_id(db, payload.tag_id, current_user.id)
+    if not tag:
+        raise TAG_NOT_FOUND
+
+    # Idempotent: attaching a tag that is already on the todo is a no-op, not
+    # an error -- the end state the caller asked for is the one they get.
+    updated = await attach_tag(db, todo, tag)
+    await invalidate_todo_list_cache(redis, current_user.id)
+
+    return updated
+
+
+@router.delete("/{todo_id}/tags/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def detach_tag_from_todo(
+    todo_id: uuid.UUID,
+    tag_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    redis: RedisClient = Depends(get_redis),
+):
+    """Remove a tag from a todo. The tag itself is not deleted."""
+    todo = await get_todo_by_id(db, todo_id, current_user.id)
+    if not todo:
+        raise TODO_NOT_FOUND
+
+    if not await detach_tag(db, todo, tag_id):
+        raise TAG_NOT_FOUND
+
     await invalidate_todo_list_cache(redis, current_user.id)
 
     return None
