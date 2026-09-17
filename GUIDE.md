@@ -46,10 +46,21 @@ cd fabbi
 cp .env.example .env
 
 # Start all services
-docker-compose up --build
+docker compose up -d --build
 
 # Seed the database with a demo user and sample TODOs
 docker compose exec backend python -m app.db.seed
+```
+
+All four services have healthchecks, and the backend waits for Postgres and
+Redis to report healthy before it runs migrations, so a cold `up` no longer
+races the database.
+
+If a default port is already taken on your machine, override it without
+editing the compose file (shell variables win over `.env`):
+
+```bash
+REDIS_PORT=6380 POSTGRES_PORT=55432 docker compose up -d --build
 ```
 
 The application will be available at:
@@ -93,6 +104,27 @@ npm install
 npm run dev
 ```
 
+### Production configuration
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+The production overlay keeps Postgres and Redis off the host network, drops
+every `:-default`, and runs uvicorn with 4 workers. It therefore refuses to
+start until the real secrets are in the environment:
+
+```bash
+export POSTGRES_USER=... POSTGRES_PASSWORD=... POSTGRES_DB=...
+export REDIS_PASSWORD=...
+export JWT_SECRET=$(python -c "import secrets; print(secrets.token_urlsafe(48))")
+export CORS_ORIGINS=https://todo.example.com
+export VITE_API_URL=https://api.example.com
+```
+
+The app also refuses to boot with `ENVIRONMENT=production` while `JWT_SECRET`
+is still the value shipped in `.env.example`.
+
 ## API Endpoints
 
 ### Authentication
@@ -115,6 +147,15 @@ npm run dev
 | PUT    | `/api/v1/todos/{id}` | Update a todo          |
 | DELETE | `/api/v1/todos/{id}` | Delete a todo          |
 
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [`docs/TODO_SHARING_SPEC.md`](docs/TODO_SHARING_SPEC.md) | Technical specification for todo list sharing |
+| [`docs/MANUAL_TEST_PLAN.md`](docs/MANUAL_TEST_PLAN.md) | Manual test plan and execution results |
+| [`docs/DB_PERFORMANCE.md`](docs/DB_PERFORMANCE.md) | Index analysis, `EXPLAIN ANALYZE` output, benchmarks |
+| [`docs/AI_USAGE.md`](docs/AI_USAGE.md) | Disclosure of AI assistance |
+
 ## Project Structure
 
 ```
@@ -131,13 +172,17 @@ fabbi/
 │   ├── alembic/             # DB migrations
 │   └── tests/               # Test suite
 ├── frontend/
+│   ├── nginx.conf           # SPA fallback + caching for the runtime image
 │   └── src/
 │       ├── components/ui/   # shadcn/ui components
 │       ├── features/        # Feature modules (auth, todos)
 │       ├── lib/             # Utilities (API, query client)
 │       ├── pages/           # Route pages
 │       └── router/          # React Router config
-└── docker-compose.yml
+├── e2e/                     # Playwright end-to-end suite
+├── docs/                    # Spec, test plan, performance report
+├── docker-compose.yml       # Development stack
+└── docker-compose.prod.yml  # Production overrides
 ```
 
 ## Running Tests
@@ -149,10 +194,26 @@ pytest tests/ -v
 ```
 
 ### Frontend E2E Tests (Playwright)
-Once set up, run your Playwright suite against the running frontend:
+
+The suite lives in `e2e/` and runs against a stack that is already up.
+
 ```bash
-# In your E2E / frontend directory:
-npx playwright test
+docker compose up -d --build          # from the repo root
+
+cd e2e
+npm install
+npx playwright install chromium       # first run only
+npx playwright test                   # headless
+npx playwright test --headed          # watch it drive the browser
+npx playwright test --ui              # interactive runner
+npx playwright show-report            # last HTML report
+```
+
+Point it somewhere else with `E2E_BASE_URL` and `E2E_API_URL`, for example
+against the Vite dev server:
+
+```bash
+E2E_BASE_URL=http://localhost:5173 npx playwright test
 ```
 
 ### Database Performance Benchmarking
@@ -160,8 +221,11 @@ To test database indexing and query execution times with 1 million records:
 ```bash
 docker compose exec -e SEED_USERS=10000 -e SEED_TODOS=1000000 backend python -m app.db.seed
 ```
-Connect to PostgreSQL container to run `EXPLAIN ANALYZE`:
+Connect to the PostgreSQL container to run `EXPLAIN ANALYZE`:
 ```bash
 docker compose exec postgres psql -U fabbi -d postgres
 ```
+
+Measured before/after numbers and the indexing rationale are in
+[`docs/DB_PERFORMANCE.md`](docs/DB_PERFORMANCE.md).
 
