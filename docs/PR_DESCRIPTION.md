@@ -1,6 +1,6 @@
 # Developer Assessment — Phi Long
 
-All mandatory tiers are complete, and so is the optional Tier 4. 26 commits,
+All mandatory tiers are complete, and so is the optional Tier 4. 27 commits,
 each scoped to one concern; every backend commit passes its own test suite.
 
 | Tier | Deliverable | Where |
@@ -8,7 +8,7 @@ each scoped to one concern; every backend commit passes its own test suite.
 | 1 — Bug hunting | 28 defects found, 28 fixed (20 backend, 8 frontend) | §1, commits `60ab278`…`fb31b66` |
 | 2A — pytest | 76 new tests, 85 total | `backend/tests/` |
 | 2B — Playwright | 17 E2E specs, set up from scratch | `e2e/` |
-| 2C — Manual test plan | 50 cases with results | [`docs/MANUAL_TEST_PLAN.md`](docs/MANUAL_TEST_PLAN.md) |
+| 2C — Manual test plan | 81 cases with results | [`docs/MANUAL_TEST_PLAN.md`](docs/MANUAL_TEST_PLAN.md) |
 | 3A — Spec | Todo sharing specification | [`docs/TODO_SHARING_SPEC.md`](docs/TODO_SHARING_SPEC.md) |
 | 3B — Docker | 5 of 5 suggested improvements | §4 |
 | 3C — DB indexing | 182× on the list query, measured | [`docs/DB_PERFORMANCE.md`](docs/DB_PERFORMANCE.md) |
@@ -171,7 +171,7 @@ Severity is impact if exploited or hit in production. Every **Critical** and
 |---|---|---|---|
 | F-18 | `todos.py:49` | One `SELECT` on `users` per row, to attach an email already in hand — a pure N+1, 20 extra round trips per page | Use `current_user.email`; the rows are filtered on his id |
 | F-19 | `todo_service.py:31` | No `ORDER BY` with `OFFSET`/`LIMIT`: Postgres may return a row on two pages or none | `ORDER BY created_at DESC, id DESC` — a total order, since `created_at` is not unique |
-| F-20 | `auth.py:84` | `/refresh` never checked the token type, never confirmed the account still exists, and left the token replayable forever | Type check, user re-check, and rotation — the presented token is revoked |
+| F-20 | `auth.py:84` | `/refresh` checked the token type but never confirmed the account still exists, and left the token replayable for its whole life (which F-01 made unlimited) | User re-check and rotation — the presented token is revoked on use |
 | F-21 | `main.py:31` | `allow_origins=["*"]` with `allow_credentials=True` — rejected by browsers, and trusts every origin | Explicit `CORS_ORIGINS`; a wildcard is refused by a validator |
 | F-22 | `schemas/user.py:9` | No password bounds. bcrypt silently truncates past 72 bytes, leaving the tail of a long password unverified | 8–72 characters, enforced both ends |
 | F-23 | `todos.ts:76` | `onMutate` returned a snapshot nothing restored, so a rejected update stayed on screen | `onError` rolls back every snapshotted page |
@@ -323,7 +323,7 @@ would be write and storage cost with no query to serve.
 
 ## 6. Git workflow
 
-Branch `assessment/phi-long`, **26 commits**, Conventional Commits
+Branch `assessment/phi-long`, **27 commits**, Conventional Commits
 throughout, each one scoped to a single concern.
 
 Worth flagging: the first pass produced eight backend commits that each passed

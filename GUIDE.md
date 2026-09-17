@@ -178,6 +178,7 @@ Tag names are unique per user, ignoring case.
 
 | Document | Contents |
 |---|---|
+| [`docs/FINDINGS.md`](docs/FINDINGS.md) | Every defect found, why it mattered, and what fixed it |
 | [`docs/TODO_SHARING_SPEC.md`](docs/TODO_SHARING_SPEC.md) | Technical specification for todo list sharing |
 | [`docs/MANUAL_TEST_PLAN.md`](docs/MANUAL_TEST_PLAN.md) | Manual test plan and execution results |
 | [`docs/DB_PERFORMANCE.md`](docs/DB_PERFORMANCE.md) | Index analysis, `EXPLAIN ANALYZE` output, benchmarks |
