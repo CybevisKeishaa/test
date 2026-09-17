@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -44,6 +44,18 @@ class Todo(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    # Matches the filter and the sort of the paginated list query exactly, so
+    # Postgres reads the page already ordered instead of sorting the user's
+    # whole history. See alembic revision c2d3e4f5a6b7.
+    __table_args__ = (
+        Index(
+            "ix_todos_user_id_created_at",
+            "user_id",
+            text("created_at DESC"),
+            text("id DESC"),
+        ),
     )
 
     # Relationships
