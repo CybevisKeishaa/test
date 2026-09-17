@@ -6,9 +6,17 @@ import { useDeleteTodo, useToggleTodo } from "../api/todos";
 
 interface TodoListProps {
   todos: Todo[];
+  selectedIds: Set<string>;
+  onSelectedChange: (todoId: string, selected: boolean) => void;
+  isFiltered: boolean;
 }
 
-export function TodoList({ todos }: TodoListProps) {
+export function TodoList({
+  todos,
+  selectedIds,
+  onSelectedChange,
+  isFiltered,
+}: TodoListProps) {
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
   const deleteTodo = useDeleteTodo();
   const toggleTodo = useToggleTodo();
@@ -26,10 +34,22 @@ export function TodoList({ todos }: TodoListProps) {
   };
 
   if (todos.length === 0) {
+    // An empty *filtered* list means something different from an empty
+    // account, and telling them apart is the difference between "add a todo"
+    // and "your filters are too narrow".
     return (
       <div className="text-center py-12 text-muted-foreground">
-        <p className="text-lg">No todos yet</p>
-        <p className="text-sm mt-1">Create your first todo to get started</p>
+        {isFiltered ? (
+          <>
+            <p className="text-lg">No todos match these filters</p>
+            <p className="text-sm mt-1">Try clearing or widening them</p>
+          </>
+        ) : (
+          <>
+            <p className="text-lg">No todos yet</p>
+            <p className="text-sm mt-1">Create your first todo to get started</p>
+          </>
+        )}
       </div>
     );
   }
@@ -44,6 +64,8 @@ export function TodoList({ todos }: TodoListProps) {
           <TodoItem
             key={todo.id}
             todo={todo}
+            selected={selectedIds.has(todo.id)}
+            onSelectedChange={onSelectedChange}
             onToggle={handleToggle}
             onEdit={handleEdit}
             onDelete={handleDelete}
