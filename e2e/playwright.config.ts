@@ -15,7 +15,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // Capped rather than left at one-per-core: the suite drives real browsers
+  // against a single-worker uvicorn on the same machine, and starving them
+  // produced timing flakes with no server-side error to show for it.
+  workers: process.env.CI ? 1 : 4,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : [["list"], ["html", { open: "never" }]],
   timeout: 30_000,
   expect: { timeout: 10_000 },

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  completionCheckbox,
   createTodo,
   login,
   logout,
@@ -29,7 +30,7 @@ test.describe("Full user journey", () => {
       await expect(page.getByText("Finish every tier")).toBeVisible();
     });
 
-    const checkbox = todoRow(page, title).getByRole("checkbox");
+    const checkbox = completionCheckbox(page, title);
 
     await test.step("toggle it complete", async () => {
       await expect(checkbox).not.toBeChecked();
@@ -45,17 +46,17 @@ test.describe("Full user journey", () => {
       // Regression guard: the list cache was neither scoped nor invalidated,
       // so a reload used to serve the pre-toggle body back.
       await page.reload();
-      await expect(todoRow(page, title).getByRole("checkbox")).toBeChecked();
+      await expect(completionCheckbox(page, title)).toBeChecked();
     });
 
     await test.step("toggle it back to active", async () => {
       // Regression guard: `if todo_data.completed:` discarded the falsy value,
       // so a completed todo could never be reopened.
       await toggleTodo(page, title);
-      await expect(todoRow(page, title).getByRole("checkbox")).not.toBeChecked();
+      await expect(completionCheckbox(page, title)).not.toBeChecked();
 
       await page.reload();
-      await expect(todoRow(page, title).getByRole("checkbox")).not.toBeChecked();
+      await expect(completionCheckbox(page, title)).not.toBeChecked();
     });
 
     await test.step("log out", async () => {
@@ -84,8 +85,7 @@ test.describe("Full user journey", () => {
     await createTodo(page, "Original title", "Description to preserve");
 
     await todoRow(page, "Original title")
-      .getByRole("button")
-      .first()
+      .getByRole("button", { name: /^Edit "/ })
       .click();
 
     const dialog = page.getByRole("dialog");

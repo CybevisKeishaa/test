@@ -67,13 +67,22 @@ export async function createTodo(
   await expect(todoRow(page, title)).toBeVisible();
 }
 
-/** The row containing a todo with this exact title. */
+/** The row containing a todo with this title. */
 export function todoRow(page: Page, title: string) {
-  return page
-    .locator("div")
-    .filter({ has: page.getByText(title, { exact: true }) })
-    .filter({ has: page.getByRole("checkbox") })
-    .last();
+  return page.getByTestId("todo-row").filter({ hasText: title });
+}
+
+/**
+ * A row carries two checkboxes -- "select for a bulk action" and "mark done".
+ * Both have an accessible name, so tests address them by intent rather than
+ * by position.
+ */
+export function completionCheckbox(page: Page, title: string) {
+  return todoRow(page, title).getByRole("checkbox", { name: /^Mark "/ });
+}
+
+export function selectionCheckbox(page: Page, title: string) {
+  return todoRow(page, title).getByRole("checkbox", { name: /^Select "/ });
 }
 
 /**
@@ -90,7 +99,7 @@ export async function toggleTodo(page: Page, title: string): Promise<void> {
       response.url().includes("/api/v1/todos/")
   );
 
-  await todoRow(page, title).getByRole("checkbox").click();
+  await completionCheckbox(page, title).click();
 
   const response = await saved;
   expect(response.status()).toBe(200);
@@ -100,4 +109,43 @@ export async function logout(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Logout" }).click();
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole("button", { name: "Sign In" })).toBeVisible();
+}
+
+/** Open the tag manager dialog from the header. */
+export async function openTagManager(page: Page) {
+  await page.getByRole("button", { name: "Tags" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Manage tags")).toBeVisible();
+  return dialog;
+}
+
+export async function closeDialog(page: Page) {
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toBeHidden();
+}
+
+/** Create a tag through the tag manager and close it again. */
+export async function createTag(page: Page, name: string) {
+  const dialog = await openTagManager(page);
+  await dialog.getByLabel("New tag").fill(name);
+  await dialog.getByRole("button", { name: "Add tag" }).click();
+  await expect(dialog.getByRole("button", { name: `Rename ${name}` })).toBeVisible();
+  await closeDialog(page);
+}
+
+/** Attach an existing tag to a todo through that todo's edit dialog. */
+export async function attachTag(page: Page, todoTitle: string, tagName: string) {
+  await todoRow(page, todoTitle).getByRole("button", { name: /^Edit "/ }).click();
+
+  const dialog = page.getByRole("dialog");
+  const chip = dialog.getByRole("button", { name: `Add tag ${tagName}` });
+  await expect(chip).toBeVisible();
+  await chip.click();
+  // aria-pressed flips once the attach lands.
+  await expect(
+    dialog.getByRole("button", { name: `Remove tag ${tagName}` })
+  ).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
 }

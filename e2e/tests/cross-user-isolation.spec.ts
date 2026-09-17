@@ -84,7 +84,11 @@ test.describe("Cross-user data isolation", () => {
         headers: { Authorization: `Bearer ${aliceToken}` },
       });
       expect(aliceList.ok()).toBeTruthy();
-      const todoId = (await aliceList.json()).items[0].id;
+      const aliceTodos = (await aliceList.json()).items;
+      // Asserted explicitly: indexing an empty array here would fail with a
+      // TypeError that says nothing about what actually went wrong.
+      expect(aliceTodos).toHaveLength(1);
+      const todoId = aliceTodos[0].id;
 
       const bobTokens = await request.post(
         `${API_URL}/api/v1/auth/register`,
