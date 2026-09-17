@@ -147,7 +147,14 @@ test.describe("Cross-user data isolation", () => {
     await createTodo(page, secret);
     await logout(page);
 
+    // Client-side navigation on purpose: a full page load would empty the
+    // react-query cache by itself and prove nothing.
     await page.getByRole("link", { name: "Sign up" }).click();
+    // /login and /register both have an "Email" field, so filling before the
+    // route has actually swapped writes into the form being unmounted.
+    await expect(page).toHaveURL(/\/register$/);
+    await expect(page.getByLabel("Confirm Password")).toBeVisible();
+
     await page.getByLabel("Email").fill(second);
     await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
     await page.getByLabel("Confirm Password").fill(PASSWORD);
