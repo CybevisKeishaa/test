@@ -3,7 +3,7 @@ import os
 import sys
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import random
 
 from sqlalchemy import select, insert
@@ -115,6 +115,12 @@ async def seed_db():
             print("Database already contains TODOs. Skipping TODO seeding.")
             return
 
+        # Spread created_at over the past two years. Stamping every row with
+        # the same `now` makes an index on (user_id, created_at) look useless
+        # in a benchmark and hides ordering bugs, because every row ties.
+        seed_now = datetime.now(timezone.utc)
+        backdate_window_seconds = int(timedelta(days=730).total_seconds())
+
         print("Pre-generating fake data pools for high performance...")
         fake = Faker()
         titles = [
@@ -136,7 +142,9 @@ async def seed_db():
             batch_count = min(TODO_BATCH_SIZE, TARGET_TODOS - batch_offset)
             todos_batch = []
             for _ in range(batch_count):
-                now = datetime.now(timezone.utc)
+                now = seed_now - timedelta(
+                    seconds=random.randint(0, backdate_window_seconds)
+                )
                 todos_batch.append(
                     {
                         "id": uuid.uuid4(),

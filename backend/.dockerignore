@@ -1,0 +1,33 @@
+# Virtualenvs: platform-specific and huge. Copying a host venv into the image
+# both bloats it and shadows the interpreter the image actually installs.
+venv/
+.venv/
+env/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local test database
+test.db
+*.sqlite3
+
+# Local secrets must never be baked into a layer
+.env
+.env.*
+!.env.example
+
+# VCS and editors
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Docs
+*.md

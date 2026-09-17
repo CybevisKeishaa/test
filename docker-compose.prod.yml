@@ -1,0 +1,80 @@
+# Production overrides:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Every secret below must come from the environment (or a secrets manager).
+# There are no :- defaults here on purpose: a missing secret should stop the
+# deploy rather than silently start the stack with the value from the repo.
+services:
+  postgres:
+    # Not published to the host; only the compose network can reach it.
+    ports: !override []
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  redis:
+    ports: !override []
+    command:
+      [
+        "redis-server",
+        "--requirepass",
+        "${REDIS_PASSWORD:?set REDIS_PASSWORD}",
+        "--appendonly",
+        "yes",
+        "--maxmemory",
+        "256mb",
+        "--maxmemory-policy",
+        "allkeys-lru",
+      ]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 320m
+
+  backend:
+    environment:
+      # Makes the app refuse to boot on the shipped JWT_SECRET.
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?}@redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to a unique value}
+      CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS to your real frontend origin}
+      DB_ECHO: "false"
+    # No --reload, and more than one worker.
+    command:
+      [
+        "sh",
+        "-c",
+        "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --no-server-header",
+      ]
+    restart: always
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  frontend:
+    build:
+      args:
+        VITE_API_URL: ${VITE_API_URL:?set VITE_API_URL to the public API origin}
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256m

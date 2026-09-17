@@ -1,47 +1,94 @@
+# Development stack: service ports are published to the host and the shipped
+# defaults are usable as-is. See docker-compose.prod.yml for the hardened
+# overrides (no published datastore ports, required secrets, no defaults).
 services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: fabbi
-      POSTGRES_PASSWORD: fabbi_secret
-      POSTGRES_DB: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-fabbi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fabbi_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
     ports:
-      - "5432:5432"
+      # Host port is configurable: 5432 is often already taken locally.
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # Without this the backend starts while Postgres is still initialising and
+    # `alembic upgrade head` dies on a cold boot.
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fabbi} -d ${POSTGRES_DB:-postgres}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
 
   redis:
-    image: redis:7
+    image: redis:7-alpine
+    # Redis is unauthenticated by default and would accept commands from
+    # anything that can reach the port.
+    command:
+      [
+        "redis-server",
+        "--requirepass",
+        "${REDIS_PASSWORD:-fabbi_redis_secret}",
+        "--appendonly",
+        "yes",
+      ]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-fabbi_redis_secret}
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      target: runtime
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     environment:
-      DATABASE_URL: postgresql+asyncpg://fabbi:fabbi_secret@postgres:5432/postgres
-      REDIS_URL: redis://redis:6379/0
-      JWT_SECRET: super-secret-key-change-in-production
-      JWT_ALGORITHM: HS256
-      ACCESS_TOKEN_EXPIRE_MINUTES: 30
-      REFRESH_TOKEN_EXPIRE_DAYS: 7
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-fabbi}:${POSTGRES_PASSWORD:-fabbi_secret}@postgres:5432/${POSTGRES_DB:-postgres}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-fabbi_redis_secret}@redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-super-secret-key-change-in-production}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      DB_ECHO: ${DB_ECHO:-false}
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      target: runtime
+      args:
+        # Build arg, not a runtime env: Vite inlines this at build time.
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
     ports:
-      - "3000:3000"
-    environment:
-      VITE_API_URL: http://localhost:8000
+      - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+  redis_data:

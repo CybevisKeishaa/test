@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, clearCachedUserData, clearSession, storeTokens } from "@/lib/api";
 
 interface LoginRequest {
   email: string;
@@ -24,8 +24,10 @@ export function useLogin() {
       return response.data;
     },
     onSuccess: (data) => {
-      localStorage.setItem("access_token", data.access_token);
-      localStorage.setItem("refresh_token", data.refresh_token);
+      storeTokens(data);
+      // After the switch, not before: a failed attempt must not wipe the
+      // session of whoever is currently signed in on this browser.
+      clearCachedUserData();
     },
   });
 }
@@ -37,8 +39,8 @@ export function useRegister() {
       return response.data;
     },
     onSuccess: (data) => {
-      localStorage.setItem("access_token", data.access_token);
-      localStorage.setItem("refresh_token", data.refresh_token);
+      storeTokens(data);
+      clearCachedUserData();
     },
   });
 }
@@ -48,9 +50,10 @@ export function useLogout() {
     mutationFn: async () => {
       await api.post("/auth/logout");
     },
-    onSuccess: () => {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
+    // Runs on success and on failure alike: if the server call fails we still
+    // must not leave this browser holding the session.
+    onSettled: () => {
+      clearSession();
     },
   });
 }

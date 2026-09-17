@@ -21,15 +21,11 @@ export function useAuth() {
   });
 
   const logout = () => {
+    // useLogout clears tokens and the query cache in onSettled, so both the
+    // success and the failure path land on a genuinely empty session.
     logoutMutation.mutate(undefined, {
-      onSuccess: () => {
-        navigate("/login");
-      },
-      onError: () => {
-        // Even on error, clear local tokens and redirect
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
-        navigate("/login");
+      onSettled: () => {
+        navigate("/login", { replace: true });
       },
     });
   };
