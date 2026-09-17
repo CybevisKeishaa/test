@@ -6,7 +6,8 @@ venv/
 .venv/
 
 # Environment
-# .env
+# .env is committed on purpose for this assessment: it holds local-only
+# development values. Real deployments pass secrets via the environment.
 *.env.local
 
 # IDE
@@ -32,4 +33,7 @@ docs/ANSWER_KEY.md
 .DS_Store
 Thumbs.db
 
-docs/
+# Tooling
+.serena/
+playwright-report/
+test-results/
