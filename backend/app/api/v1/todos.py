@@ -21,11 +21,25 @@ from app.services.todo_service import (
 router = APIRouter()
 
 CACHE_TTL = 300  # 5 minutes
-
 TODO_NOT_FOUND = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
     detail="Todo not found",
 )
+
+
+def todo_list_cache_key(user_id: uuid.UUID, page: int, size: int) -> str:
+    """Cache key for one page of one user's todo list.
+
+    The owner and the pagination window are both part of the key: a single
+    shared key would serve one user's todos to every other user, and would also
+    serve page 1 for every page request.
+    """
+    return f"todos:list:{user_id}:page={page}:size={size}"
+
+
+async def invalidate_todo_list_cache(redis: RedisClient, user_id: uuid.UUID) -> None:
+    """Drop every cached page for this user after a write."""
+    await redis.delete_pattern(f"todos:list:{user_id}:*")
 
 
 @router.get("", response_model=TodoListResponse)
@@ -39,13 +53,11 @@ async def list_todos(
     """Get paginated list of todos."""
     skip = (page - 1) * size
 
-    cache_key = "todos:list"
+    cache_key = todo_list_cache_key(current_user.id, page, size)
 
-    # Try to get from cache
     cached = await redis.get(cache_key)
     if cached:
-        cached_data = json.loads(cached)
-        return TodoListResponse(**cached_data)
+        return TodoListResponse(**json.loads(cached))
 
     todos, total = await get_todos(db, user_id=current_user.id, skip=skip, limit=size)
 
@@ -66,14 +78,8 @@ async def list_todos(
             )
         )
 
-    response = TodoListResponse(
-        items=items,
-        total=total,
-        page=page,
-        size=size,
-    )
+    response = TodoListResponse(items=items, total=total, page=page, size=size)
 
-    # Cache the response
     await redis.set(cache_key, response.model_dump_json(), ex=CACHE_TTL)
 
     return response
@@ -84,9 +90,11 @@ async def create_new_todo(
     todo_data: TodoCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    redis: RedisClient = Depends(get_redis),
 ):
     """Create a new todo item."""
     todo = await create_todo(db, todo_data, current_user.id)
+    await invalidate_todo_list_cache(redis, current_user.id)
     return todo
 
 
@@ -117,8 +125,6 @@ async def update_existing_todo(
     """Update a todo item."""
     todo = await get_todo_by_id(db, todo_id, current_user.id)
     if not todo:
-        # 404 rather than 403: telling a stranger "this exists but is not
-        # yours" leaks which todo ids are real.
         raise TODO_NOT_FOUND
 
     # exclude_unset keeps a partial update partial: a request that only carries
@@ -127,6 +133,7 @@ async def update_existing_todo(
     update_data = todo_data.model_dump(exclude_unset=True)
 
     updated_todo = await update_todo(db, todo, update_data)
+    await invalidate_todo_list_cache(redis, current_user.id)
 
     return updated_todo
 
@@ -141,10 +148,9 @@ async def delete_existing_todo(
     """Delete a todo item."""
     todo = await get_todo_by_id(db, todo_id, current_user.id)
     if not todo:
-        # 404 rather than 403: telling a stranger "this exists but is not
-        # yours" leaks which todo ids are real.
         raise TODO_NOT_FOUND
 
     await delete_todo(db, todo)
+    await invalidate_todo_list_cache(redis, current_user.id)
 
     return None
