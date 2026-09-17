@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { api, clearSession, storeTokens } from "@/lib/api";
+import { api, clearCachedUserData, clearSession, storeTokens } from "@/lib/api";
 
 interface LoginRequest {
   email: string;
@@ -20,14 +20,14 @@ interface TokenResponse {
 export function useLogin() {
   return useMutation({
     mutationFn: async (data: LoginRequest): Promise<TokenResponse> => {
-      // Drop anything cached for the previous session before the new one
-      // starts, so no stale user or todo data survives the switch.
-      clearSession();
       const response = await api.post("/auth/login", data);
       return response.data;
     },
     onSuccess: (data) => {
       storeTokens(data);
+      // After the switch, not before: a failed attempt must not wipe the
+      // session of whoever is currently signed in on this browser.
+      clearCachedUserData();
     },
   });
 }
@@ -35,12 +35,12 @@ export function useLogin() {
 export function useRegister() {
   return useMutation({
     mutationFn: async (data: RegisterRequest): Promise<TokenResponse> => {
-      clearSession();
       const response = await api.post("/auth/register", data);
       return response.data;
     },
     onSuccess: (data) => {
       storeTokens(data);
+      clearCachedUserData();
     },
   });
 }

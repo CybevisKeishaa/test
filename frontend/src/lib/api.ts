@@ -22,16 +22,26 @@ export function storeTokens(tokens: {
 }
 
 /**
- * Drop every trace of the previous session.
+ * Drop every cached server response for the previous user.
  *
- * Clearing react-query too is the important part: its cache is keyed by query
- * name only, so leaving it in place lets the next person to log in on this
- * browser read the previous user's todos straight out of memory.
+ * This is the important half of a session change: react-query keys are per
+ * query name, not per user, so leaving the cache in place lets the next
+ * person to sign in on this browser read the previous user's todos straight
+ * out of memory.
+ *
+ * removeQueries() rather than clear(): clear() also empties the *mutation*
+ * cache, and doing that from inside a mutation's own callback drops the
+ * in-flight mutation's observers, so its onSuccess never runs.
  */
+export function clearCachedUserData() {
+  queryClient.removeQueries();
+}
+
+/** Drop the tokens and the cached data together. */
 export function clearSession() {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
-  queryClient.clear();
+  clearCachedUserData();
 }
 
 // Endpoints that legitimately answer 401: a failed login must surface its own
