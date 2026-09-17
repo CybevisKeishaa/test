@@ -27,8 +27,18 @@ async def get_todos(
     skip: int = 0,
     limit: int = 20,
 ) -> tuple[list[Todo], int]:
-    """Get all todos with pagination for a specific user."""
-    query = select(Todo).where(Todo.user_id == user_id).offset(skip).limit(limit)
+    """Get a page of todos belonging to ``user_id``.
+
+    Ordered by ``created_at DESC, id DESC`` so pagination is stable: without a
+    total order Postgres may return a row on two different pages, or on none.
+    """
+    query = (
+        select(Todo)
+        .where(Todo.user_id == user_id)
+        .order_by(Todo.created_at.desc(), Todo.id.desc())
+        .offset(skip)
+        .limit(limit)
+    )
     result = await db.execute(query)
     todos = list(result.scalars().all())
 

@@ -2,7 +2,6 @@ import json
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_redis
@@ -21,6 +20,8 @@ from app.services.todo_service import (
 router = APIRouter()
 
 CACHE_TTL = 300  # 5 minutes
+MAX_PAGE_SIZE = 100
+
 TODO_NOT_FOUND = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
     detail="Todo not found",
@@ -45,7 +46,7 @@ async def invalidate_todo_list_cache(redis: RedisClient, user_id: uuid.UUID) -> 
 @router.get("", response_model=TodoListResponse)
 async def list_todos(
     page: int = Query(1, ge=1),
-    size: int = Query(20, ge=1),
+    size: int = Query(20, ge=1, le=MAX_PAGE_SIZE),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     redis: RedisClient = Depends(get_redis),
@@ -61,22 +62,21 @@ async def list_todos(
 
     todos, total = await get_todos(db, user_id=current_user.id, skip=skip, limit=size)
 
-    items = []
-    for todo in todos:
-        user_result = await db.execute(select(User).where(User.id == todo.user_id))
-        user = user_result.scalar_one_or_none()
-        items.append(
-            TodoResponse(
-                id=todo.id,
-                title=todo.title,
-                description=todo.description,
-                completed=todo.completed,
-                user_id=todo.user_id,
-                created_at=todo.created_at,
-                updated_at=todo.updated_at,
-                user_email=user.email if user else None,
-            )
+    # Every row is filtered on user_id == current_user.id, so the owner's email
+    # is already in hand -- the previous per-row User query was a pure N+1.
+    items = [
+        TodoResponse(
+            id=todo.id,
+            title=todo.title,
+            description=todo.description,
+            completed=todo.completed,
+            user_id=todo.user_id,
+            created_at=todo.created_at,
+            updated_at=todo.updated_at,
+            user_email=current_user.email,
         )
+        for todo in todos
+    ]
 
     response = TodoListResponse(items=items, total=total, page=page, size=size)
 
