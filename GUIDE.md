@@ -139,13 +139,40 @@ is still the value shipped in `.env.example`.
 
 ### Todos
 
-| Method | Endpoint             | Description            |
-| ------ | -------------------- | ---------------------- |
-| GET    | `/api/v1/todos`      | List todos (paginated) |
-| POST   | `/api/v1/todos`      | Create a new todo      |
-| GET    | `/api/v1/todos/{id}` | Get a specific todo    |
-| PUT    | `/api/v1/todos/{id}` | Update a todo          |
-| DELETE | `/api/v1/todos/{id}` | Delete a todo          |
+| Method | Endpoint                          | Description                         |
+| ------ | --------------------------------- | ----------------------------------- |
+| GET    | `/api/v1/todos`                   | List todos (filtered, paginated)    |
+| POST   | `/api/v1/todos`                   | Create a new todo                   |
+| GET    | `/api/v1/todos/{id}`              | Get a specific todo                 |
+| PUT    | `/api/v1/todos/{id}`              | Update a todo (partial)             |
+| DELETE | `/api/v1/todos/{id}`              | Delete a todo                       |
+| PATCH  | `/api/v1/todos/bulk-status`       | Mark several todos completed/active |
+| POST   | `/api/v1/todos/{id}/tags`         | Attach a tag to a todo              |
+| DELETE | `/api/v1/todos/{id}/tags/{tagId}` | Detach a tag from a todo            |
+
+`GET /api/v1/todos` accepts:
+
+| Parameter | Values | Notes |
+| --- | --- | --- |
+| `status` | `all` (default), `active`, `completed` | |
+| `tag_id` | UUID | Only todos carrying that tag |
+| `keyword` | text | Matches title or description; `%` and `_` are literal |
+| `date_from`, `date_to` | `YYYY-MM-DD` | Whole UTC days, both inclusive |
+| `page` | 1 or greater | Default 1 |
+| `page_size` / `size` | 1-100 | Default 20 |
+
+Results are ordered `created_at DESC, id DESC`.
+
+### Tags
+
+| Method | Endpoint            | Description                |
+| ------ | ------------------- | -------------------------- |
+| GET    | `/api/v1/tags`      | List the caller's tags     |
+| POST   | `/api/v1/tags`      | Create a tag               |
+| PATCH  | `/api/v1/tags/{id}` | Rename or recolour a tag   |
+| DELETE | `/api/v1/tags/{id}` | Delete a tag and its links |
+
+Tag names are unique per user, ignoring case.
 
 ## Documentation
 
@@ -162,7 +189,7 @@ is still the value shipped in `.env.example`.
 fabbi/
 ├── backend/
 │   ├── app/
-│   │   ├── api/v1/          # API route handlers
+│   │   ├── api/v1/          # API route handlers (auth, todos, tags)
 │   │   ├── core/            # Config, security, Redis
 │   │   ├── db/              # Database setup
 │   │   ├── models/          # SQLAlchemy models

@@ -14,7 +14,8 @@ Verify the behaviour of the fixed defects and guard against regression across
 authentication, authorization, todo CRUD and the Redis cache layer.
 
 **In scope**: registration, login, token lifetime, logout, todo CRUD,
-cross-user data isolation, cache correctness, pagination.
+cross-user data isolation, cache correctness, pagination, and the
+Tier 4 extension (tags, filtering, bulk actions).
 
 **Out of scope**: performance and load (covered by
 [`docs/DB_PERFORMANCE.md`](DB_PERFORMANCE.md)), visual/responsive design,
@@ -143,14 +144,50 @@ does not.
 | TC-I05 | The app refuses the shipped JWT secret in production | — | Start with `ENVIRONMENT=production` and the default `JWT_SECRET` | Startup fails with a message naming `JWT_SECRET` | Medium / Security | Fails as intended | Pass |
 | TC-I06 | CORS rejects a wildcard | — | Set `CORS_ORIGINS=*` and start | Startup fails with a validation error | Low / Security | Fails as intended | Pass |
 
+### 4.7 Tags, Filtering & Bulk Actions
+
+| TC ID | Scenario | Preconditions | Steps | Expected result | Priority / Severity | Actual | Status |
+|---|---|---|---|---|---|---|---|
+| TC-G01 | Create a tag | Logged in | Tags then enter a name and Add tag | `201`; the tag appears in the list and in the filter dropdown | High / Major | As expected | Pass (auto: `test_tags.py::test_create_tag`) |
+| TC-G02 | **Duplicate tag name, different casing** | Tag "Work" exists | Create "work" | `409` naming the clash; no second tag | High / Major | As expected | Pass (auto: `test_tags.py`, `tags-and-filters.spec.ts`) |
+| TC-G03 | Duplicate is stopped by the database too | Tag exists | Insert a second row with the same name in another casing directly in the DB | `IntegrityError` from the unique index on `(user_id, lower(name))` | Medium / Major | As expected | Pass (auto: `test_tags.py::test_database_rejects_duplicate_tag_names`) |
+| TC-G04 | Two users may share a tag name | Users A and B | Both create "Work" | Both succeed; uniqueness is per user | Medium / Minor | As expected | Pass (auto: `test_tags.py::test_two_users_may_share_a_tag_name`) |
+| TC-G05 | Blank name is caught client-side | Logged in | Submit a name of only spaces | Inline "Tag name is required"; **no** POST is sent | Medium / Minor | No request sent | Pass (auto: `tags-and-filters.spec.ts`) |
+| TC-G06 | Invalid colour is rejected | Logged in | Enter `not-a-colour` | `422` / inline error | Low / Minor | As expected | Pass (auto: `test_tags.py::test_invalid_colour_is_rejected`) |
+| TC-G07 | **A stranger cannot touch another user's tag** | A owns a tag | As B, `PATCH` and `DELETE` that tag id | Both `404`; the tag is intact for A | High / Critical | `404`, intact | Pass (auto: `test_tags.py`) |
+| TC-G08 | Attach a tag and see it on the row | Tag and todo exist | Edit the todo, click the tag chip | The badge shows on the row and survives a reload | High / Major | As expected | Pass (auto: `tags-and-filters.spec.ts`) |
+| TC-G09 | **Cannot attach another user's tag** | A owns a tag | As B, attach it to B's own todo | `404`; nothing attached | High / Critical | `404` | Pass (auto: `test_tags.py::test_attaching_another_users_tag_is_rejected`) |
+| TC-G10 | **Cannot tag another user's todo** | A owns a todo | As B, attach B's tag to A's todo | `404` | High / Critical | `404` | Pass (auto: `test_tags.py::test_tagging_another_users_todo_is_rejected`) |
+| TC-G11 | Renaming a tag updates the badge | Tag attached to a todo | Rename it | The row shows the new name immediately | Medium / Major | Immediate | Pass (auto: `tags-and-filters.spec.ts`) |
+| TC-G12 | Deleting a tag keeps the todo | Tag attached to a todo | Delete the tag and confirm | The todo remains; only the badge is gone | Medium / Major | As expected | Pass (auto: `test_tags.py`, `tags-and-filters.spec.ts`) |
+| TC-F01 | Filter by status | One completed, one active | Choose Completed, then Active | Only the matching todos; `total` reflects the filter | High / Major | As expected | Pass (auto: `test_todo_filters.py`) |
+| TC-F02 | Filter by keyword | Todos with distinct text | Type part of a title, then part of a description | Both match; search is case-insensitive | Medium / Major | As expected | Pass (auto: `test_todo_filters.py`) |
+| TC-F03 | **Wildcards in a keyword are literal** | A todo titled "50% off" | Search `50%`, then `%%%` | `50%` finds it; `%%%` finds nothing | Medium / Security | As expected | Pass (auto: `test_keyword_wildcards_are_literal`) |
+| TC-F04 | Filter by tag | One tagged, one not | Pick the tag | Only the tagged todo | Medium / Major | As expected | Pass (auto: `test_todo_filters.py::test_filter_by_tag`) |
+| TC-F05 | **Another user's tag id yields nothing** | B owns a tagged todo | As A, filter by B's tag id | Empty list, never B's todos | High / Critical | Empty | Pass (auto: `test_filter_by_another_users_tag_returns_nothing`) |
+| TC-F06 | Filter by date range | A todo created today | Set From to tomorrow, then clear | Empty, then the todo returns | Medium / Minor | As expected | Pass (auto: `test_todo_filters.py`, `tags-and-filters.spec.ts`) |
+| TC-F07 | Filters combine | Mixed todos | Apply status, tag, keyword and date together | Only the todo matching all of them | Medium / Major | As expected | Pass (auto: `test_filters_combine`) |
+| TC-F08 | **Each filter set is cached separately** | Mixed todos | Request several distinct filter combinations | One Redis entry per combination; each cached body correct on re-read | High / Critical | 6 keys, correct | Pass (auto: `test_cache_key_includes_every_filter`) |
+| TC-F09 | An empty filtered list is distinguishable | One todo | Search for something that matches nothing | "No todos match these filters", not "No todos yet" | Low / Minor | As expected | Pass (auto: `tags-and-filters.spec.ts`) |
+| TC-F10 | Clear filters | Filters applied | Click "Clear filters" | Everything returns; the button disappears | Medium / Minor | As expected | Pass (auto: `tags-and-filters.spec.ts`) |
+| TC-B01 | Bulk mark completed | 3 todos | Select two, Mark completed | Both complete; the third untouched; selection clears; survives reload | High / Major | As expected | Pass (auto: `test_todo_filters.py`, `tags-and-filters.spec.ts`) |
+| TC-B02 | Bulk mark active | Completed todos | Select and Mark active | They return to active | Medium / Major | As expected | Pass (auto: `test_bulk_mark_active_again`) |
+| TC-B03 | **Bulk update is all-or-nothing across users** | A and B each own a todo | As A, send both ids | `404`; **neither** todo changed | High / Critical | Nothing changed | Pass (auto: `test_bulk_update_is_all_or_nothing_across_users`) |
+| TC-B04 | Unknown id aborts the batch | One real id plus one random | Send both | `404`; nothing changed | Medium / Major | Nothing changed | Pass (auto: `test_bulk_update_rejects_unknown_ids`) |
+| TC-B05 | Repeated ids are collapsed | One todo | Send its id twice | `updated` is 1, not 2 | Low / Minor | `updated: 1` | Pass (auto: `test_bulk_update_deduplicates_ids`) |
+| TC-B06 | Empty selection is rejected | none | Send an empty `todo_ids` | `422` | Low / Minor | `422` | Pass (auto: `test_bulk_update_rejects_an_empty_list`) |
+| TC-B07 | Bulk update invalidates the cache | Cache warm | Bulk complete a todo, list again | The change is visible immediately | Medium / Major | Immediate | Pass (auto: `test_bulk_update_invalidates_the_cache`) |
+| TC-B08 | `bulk-status` is not read as an id | none | `PATCH /todos/bulk-status` | Handled by the bulk route: `404` from the ownership check, not a `422` UUID parse error | Medium / Major | As expected | Pass (auto: `test_bulk_status_route_is_not_read_as_a_todo_id`) |
+| TC-B09 | Clear selection changes nothing | A todo selected | Click "Clear selection" | The bar disappears; the todo is unchanged | Low / Minor | As expected | Pass (auto: `tags-and-filters.spec.ts`) |
+
 ---
 
 ## 5. Execution Summary
 
 | Suite | Result |
 |---|---|
-| Backend (`pytest tests/ -v`) | 38 passed |
-| E2E (`npx playwright test`) | 7 passed |
+| Backend (`pytest tests/ -v`) | 85 passed |
+| E2E (`npx playwright test`) | 17 passed (34/34 across three `--repeat-each=2` runs) |
 | Manual / infrastructure | TC-I01 … TC-I06 executed |
 
 ---

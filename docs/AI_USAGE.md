@@ -30,10 +30,11 @@ claim in this repository is backed by a command whose output I read.
 | Malware scan | Ran the greps and lockfile checks | Read the output myself before running anything from the repo |
 | Bug hunt | Read the codebase and produced the defect list | Cross-checked each finding against the source; rejected none, but demanded a failing test for each |
 | Fixes | Wrote the patches | Reviewed each diff; every fix has a regression test that fails without it |
-| Tests | Wrote the pytest and Playwright suites | Ran them; and ran them against the *pre-fix* code to confirm 21 of 29 actually fail there |
+| Tests | Wrote the pytest and Playwright suites | Ran them; and ran them against the *pre-fix* code to confirm 22 of 29 actually fail there |
 | Docker | Wrote the Dockerfiles and compose files | `docker compose config` validated; the stack was built and started; healthchecks observed |
 | DB indexing | Wrote the migration and ran the benchmarks | `EXPLAIN ANALYZE` output is pasted verbatim in `DB_PERFORMANCE.md`, not summarised |
 | Docs | Wrote the spec and the test plan | Reviewed for accuracy; statuses in the test plan reflect what was actually executed |
+| Tier 4 | Wrote the schema, API, UI and tests | Ran both suites; drove the UI through Playwright rather than trusting it by inspection |
 
 Nothing is reported as passing that was not run. Where something was not
 executed, the test plan says "Not executed" rather than assuming a result —
@@ -105,9 +106,10 @@ Worth recording, since "the AI did it" is not an engineering decision:
    `(user_id, created_at DESC, id DESC)`, and `DB_PERFORMANCE.md` shows the
    plans for both.
 
-3. **Scope was held.** Tier 4 was treated as genuinely optional and
-   [see the PR for what was and was not implemented], rather than half-built
-   at the expense of the mandatory tiers.
+3. **Order of work was held.** Tier 4 is optional, so it was built only
+   after every mandatory tier was finished and verified, rather than
+   half-started alongside them. When it was built it was built whole: schema,
+   API, tests, and the frontend the README asks for.
 
 ---
 

@@ -6,7 +6,7 @@
 | **Date** | 2026-09-17 |
 | **Dataset** | 10,000 users / 1,000,000 todos (`SEED_USERS=10000 SEED_TODOS=1000000`) |
 | **Engine** | PostgreSQL 16 (`postgres:16-alpine`) in Docker, default `shared_buffers` |
-| **Migration** | `c2d3e4f5a6b7_index_todos_user_created.py` |
+| **Migrations** | `c2d3e4f5a6b7_index_todos_user_created.py`, `d3e4f5a6b7c8_add_tags_and_todo_tags.py` |
 
 ---
 
@@ -194,9 +194,11 @@ milliseconds on network and JSON. It matters for the seed script and for any
 future bulk import, where the right move is to drop the index, load, and
 rebuild.
 
-`UPDATE` pays the same cost only when it touches an indexed column. Toggling
-`completed` or editing `title` does not move the index entry, so Postgres can
-use a HOT update and skip the index entirely.
+`UPDATE` pays the cost only when it touches a column the index contains.
+Editing a `title` moves nothing in either index, so Postgres can use a HOT
+update and skip them both. Toggling `completed` is free for this index, but
+does move an entry in the status index added later in section 7 -- one more
+reason that index is worth having only once a query actually needs it.
 
 ### 6.2 Storage
 
@@ -272,12 +274,18 @@ Both beat a sequential scan by a wide margin, so the README's suggestion is
 not wrong — it is just 5.8× slower here and still pays for a sort whose cost
 grows with how many todos the user owns.
 
-**When it becomes the right index:** as soon as `?status=` filtering exists
-(Tier 4). `WHERE user_id = $1 AND completed = $2` pins both leading columns,
-`created_at` then satisfies the `ORDER BY`, and the plan is sort-free. At that
-point the answer is **both** indexes — one for the filtered list, one for the
-unfiltered — not one replacing the other. That index is deliberately not
-shipped here: an index with no query to serve is pure write and storage cost.
+**It now ships as well.** Tier 4 added `?status=`, so
+`WHERE user_id = $1 AND completed = $2` pins both leading columns, `created_at`
+then satisfies the `ORDER BY`, and the filtered plan is sort-free. Migration
+`d3e4f5a6b7c8` adds `(user_id, completed, created_at DESC, id DESC)`
+**alongside** the index above, not instead of it: each serves a query the other
+cannot, and the unfiltered list is still the common case. Had the status filter
+never arrived, that index would have stayed out — an index with no query to
+serve is pure write and storage cost.
+
+The measurements above were taken with each index available on its own, so they
+show what the column order does rather than which index the planner happens to
+prefer when both exist.
 
 ---
 
@@ -292,8 +300,14 @@ shipped here: an index with no query to serve is pure write and storage cost.
 2. **`count(*)` on every request.** Cheap now (0.09 ms), but it is still a
    second query per page. For a user with a very large list, returning an
    estimate or only "has next page" would drop it entirely.
-3. **`users.email`** got its index in `b1c2d3e4f5a6` — added for the unique
-   constraint, and it also removes a sequential scan from every login.
-4. **`DB_ECHO` defaulted to `True`**, printing every statement and its bound
+3. **The tag filter is not benchmarked here.** It joins `todo_tags`, which is
+   indexed in both directions (composite primary key on `(todo_id, tag_id)`,
+   plus `ix_todo_tags_tag_id` for the reverse lookup), but the numbers above
+   are for the plain and status-filtered lists. Worth measuring once there is
+   a realistic volume of tagged rows to measure against.
+4. **`users.email`** got its index in `b1c2d3e4f5a6` — added for the unique
+   constraint, and it also removes a sequential scan from every login. `tags`
+   is indexed on `(user_id, lower(name))` for the same two reasons.
+5. **`DB_ECHO` defaulted to `True`**, printing every statement and its bound
    values to stdout. That was a throughput cost on top of the missing index,
    and is now off by default.
