@@ -21,6 +21,11 @@ class User(Base):
     email: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
+        # Unique: without it two accounts can share an address and
+        # get_user_by_email's scalar_one_or_none() raises on every login.
+        # Indexed: every login and registration looks a user up by email.
+        unique=True,
+        index=True,
     )
     hashed_password: Mapped[str] = mapped_column(
         String(255),
