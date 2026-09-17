@@ -5,7 +5,7 @@ each scoped to one concern; every backend commit passes its own test suite.
 
 | Tier | Deliverable | Where |
 |---|---|---|
-| 1 — Bug hunting | 28 defects found, 28 fixed (20 backend, 8 frontend) | §1, commits `60ab278`…`fb31b66` |
+| 1 — Bug hunting | 28 defects found, 28 fixed (20 backend, 8 frontend) | §1, commits `c19d6e5`…`9795b6c` |
 | 2A — pytest | 76 new tests, 85 total | `backend/tests/` |
 | 2B — Playwright | 17 E2E specs, set up from scratch | `e2e/` |
 | 2C — Manual test plan | 81 cases with results | [`docs/MANUAL_TEST_PLAN.md`](docs/MANUAL_TEST_PLAN.md) |
@@ -188,8 +188,8 @@ Severity is impact if exploited or hit in production. Every **Critical** and
 
 Two further defects were introduced and fixed **within this branch** rather
 than inherited; they are listed for completeness because the commits are in
-the history: `ec3f01a` (clearing the query cache from inside a mutation's own
-`mutationFn` can drop that mutation's callbacks) and `3d8a293` (an E2E race).
+the history: `baa45b5` (clearing the query cache from inside a mutation's own
+`mutationFn` can drop that mutation's callbacks) and `37911bc` (an E2E race).
 
 ---
 
@@ -334,14 +334,14 @@ the `conftest` change moved into the commit that needed it. Verified by
 checking out each commit and running its own suite:
 
 ```
-60ab278  fix(auth): enforce JWT expiration and access/refresh sep    9 passed
-1ac453b  fix(auth): stop login enumeration and make logout actual    9 passed
-6ddf7c1  fix(db): enforce unique user email                          9 passed
-65600b2  fix(todos): scope every todo to its owner and keep parti    9 passed
-7fdc19b  fix(todos): scope the list cache per user and invalidate    9 passed
-00c1868  perf(todos): drop the N+1 owner lookup and order pages d    9 passed
-8685215  fix(config): restrict CORS origins and stop echoing SQL     9 passed
-317a0eb  test(backend): add regression coverage for the fixed bug   38 passed
+c19d6e5  fix(auth): enforce JWT expiration and access/refresh sep    9 passed
+a6199d8  fix(auth): stop login enumeration and make logout actual    9 passed
+fd99d74  fix(db): enforce unique user email                          9 passed
+f4b7c97  fix(todos): scope every todo to its owner and keep parti    9 passed
+f597664  fix(todos): scope the list cache per user and invalidate    9 passed
+b153ae2  perf(todos): drop the N+1 owner lookup and order pages d    9 passed
+d872f68  fix(config): restrict CORS origins and stop echoing SQL     9 passed
+3e83119  test(backend): add regression coverage for the fixed bug   38 passed
 ```
 
 ## 7. Tier 4 — tags, filtering and bulk actions

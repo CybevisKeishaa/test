@@ -860,7 +860,7 @@ in the history and because how they were found is the point.
 
 ### W-01 · Clearing the query cache from inside a mutation
 
-- **Commit** `79657fa`
+- **Commit** `baa45b5`
 
 `useLogin`/`useRegister` called `queryClient.clear()` inside `mutationFn`.
 `clear()` empties the **mutation** cache as well as the query cache, and doing
@@ -874,7 +874,7 @@ in.
 
 ### W-02 · A race in the E2E suite
 
-- **Commit** `3d8a293`
+- **Commit** `37911bc`
 
 The tenant-switch spec clicked "Sign up" and filled the form immediately. Both
 `/login` and `/register` render a field labelled "Email", so the fill could
